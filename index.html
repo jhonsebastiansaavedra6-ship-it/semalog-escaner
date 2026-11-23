@@ -122,6 +122,10 @@ svg{width:20px;height:20px;flex-shrink:0}
   history.replaceState(null,'',location.pathname);
 
   /* ── Lista (se guarda en el teléfono por si la página se recarga) ── */
+  /* v1.50: t=1 → abierto en una pestaña nueva (se cierra sola al terminar) · m=1 → un solo código (Crear producto) */
+  var enPestana=h.get('t')==='1',unCodigo=h.get('m')==='1';
+  try{if(h.has('t')||h.has('m'))sessionStorage.setItem('sl_esc_modo',JSON.stringify({t:enPestana,m:unCodigo}));
+      else{var mo=JSON.parse(sessionStorage.getItem('sl_esc_modo')||'null');if(mo){enPestana=!!mo.t;unCodigo=!!mo.m;}}}catch(e){}
   /* El número del escaneo lo pone la app (h.get('s')): con él la app recoge la lista en el servidor al volver */
   var sApp=h.get('s')||'';
   if(/^[a-z0-9]{8,32}$/.test(sApp)){try{sessionStorage.setItem('sl_esc_id',sApp);}catch(e){}}
@@ -170,6 +174,7 @@ svg{width:20px;height:20px;flex-shrink:0}
     else{if(lista.length>=MAX_ITEMS){avisar('Máximo '+MAX_ITEMS+' códigos distintos por escaneo',false);return;}f={c:codigo,q:1};lista.unshift(f);}
     var nom=INFO[codigo]?(INFO[codigo].d||INFO[codigo].r):codigo;
     pitido(INFO[codigo]!==null);avisar(nom+' · '+f.q+(f.q>1?' unidades':' unidad'),INFO[codigo]!==null);guardar();pintar(codigo);buscarNombre(codigo);
+    if(unCodigo&&!volviendo){volviendo=true;setTimeout(function(){volver(true);},300);}   /* Crear producto: con el primer código se vuelve solo */
   }
   /* ── Nombre del producto: se pregunta a SEMA∆LOG con el número del escaneo (permiso temporal que dio la app) ── */
   var INFO={},porBuscar=[],tBusca=0,puedeBuscar=!!vuelta&&/^[a-z0-9]{16,32}$/.test(id);
@@ -223,14 +228,28 @@ svg{width:20px;height:20px;flex-shrink:0}
   /* Volver a la página EXACTA de donde se vino (con «atrás»): así Google usa la misma cuenta. Abrir la dirección /exec
      «a secas» falla cuando el celular tiene varias cuentas de Google («No se pudo abrir el archivo»). */
   function regresar(){
-    try{['sl_esc_lista','sl_esc_id','sl_esc_vuelta','sl_esc_info'].forEach(function(k){sessionStorage.removeItem(k);});}catch(e){}
+    try{['sl_esc_lista','sl_esc_id','sl_esc_vuelta','sl_esc_info','sl_esc_modo'].forEach(function(k){sessionStorage.removeItem(k);});}catch(e){}
+    if(enPestana){                                   /* pestaña nueva: se cierra y la app (que sigue abierta) ya tiene la lista */
+      try{window.close();}catch(e){}
+      setTimeout(function(){panel('<b>Listo.</b> Vuelve a la pestaña de SEMA∆LOG: '+(unCodigo?'el código ya está en el formulario.':'la lista ya está allá.')+'<br>Puedes cerrar esta pestaña.');
+        var b=$('panel').querySelector('button');if(b)b.remove();},400);
+      return;
+    }
     if(history.length>1){history.back();setTimeout(function(){location.replace(vuelta);},1500);}   /* por si no había a dónde volver */
     else location.replace(vuelta);
   }
+  /* Camino rápido: si esta pestaña la abrió SEMA∆LOG, la lista se le entrega por mensaje directo (al instante) */
+  function avisarApp(cuerpo){
+    try{if(window.opener&&!window.opener.closed){window.opener.postMessage({tipo:'semalog-escaneo',id:id,c:cuerpo},'*');return true;}}catch(e){}
+    return false;
+  }
   /* La lista se entrega al servidor (anónimo, sin cuentas) bajo el número del escaneo; la app la recoge al volver */
   function enviar(){
-    var cuerpo=JSON.stringify({escaneo:id,c:lista.map(function(x){return x.c+'*'+x.q;}).join(',')});
-    function intento(modo){return fetch(vuelta,{method:'POST',mode:modo,redirect:'follow',credentials:'omit',headers:{'Content-Type':'text/plain;charset=utf-8'},body:cuerpo});}
+    var codigos=lista.map(function(x){return x.c+'*'+x.q;}).join(',');
+    var cuerpo=JSON.stringify({escaneo:id,c:codigos});
+    function intento(modo){return fetch(vuelta,{method:'POST',mode:modo,redirect:'follow',credentials:'omit',keepalive:true,headers:{'Content-Type':'text/plain;charset=utf-8'},body:cuerpo});}
+    /* Si la app recibió el mensaje directo, no hace falta esperar al servidor: el envío sigue de respaldo en segundo plano */
+    if(enPestana&&avisarApp(codigos)){intento('no-cors').catch(function(){});return Promise.resolve(true);}
     return intento('cors').then(function(r){return r.json();}).then(function(j){if(!j||!j.ok)throw new Error((j&&j.msg)||'El servidor no aceptó la lista');return true;})
       .catch(function(e){
         if(e&&/no aceptó|inválida|Demasiados/.test(e.message||''))throw e;
@@ -302,6 +321,8 @@ svg{width:20px;height:20px;flex-shrink:0}
   $('b-linterna').onclick=function(){if(!track)return;linterna=!linterna;track.applyConstraints({advanced:[{torch:linterna}]}).then(function(){$('b-linterna').setAttribute('aria-pressed',String(linterna));}).catch(function(){linterna=false;});};
   document.addEventListener('visibilitychange',function(){if(document.hidden)apagar();else if(!stream)encender();});
 
+  var volviendo=false;
+  if(unCodigo){document.querySelector('.sup h1').textContent='Escanea el código del producto';document.querySelector('.ayuda').textContent='Apenas lo lea, vuelve solo a SEMA∆LOG y lo pone en el formulario.';}
   if(!vuelta)avisar('Ábrelo desde SEMA∆LOG para poder devolver la lista',false);
   pintar();encender();
   lista.forEach(function(x){if(!(x.c in INFO))buscarNombre(x.c);});   /* si la página se recargó, se completan los nombres */
