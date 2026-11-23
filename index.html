@@ -54,6 +54,12 @@ svg{width:20px;height:20px;flex-shrink:0}
 .fila.nueva{animation:nueva .6s ease-out}
 @keyframes nueva{from{background:rgba(34,197,94,.22)}to{background:transparent}}
 .fila .cod{flex:1;min-width:0;font-family:ui-monospace,'SF Mono',Consolas,monospace;font-size:14px;font-weight:600;color:var(--azul);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fila .inf{flex:1;min-width:0}
+.fila .ds{font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fila .st{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fila .st .cod{display:inline;font-size:12px;font-weight:500}
+.fila.noreg .ds{color:#ef4444}
+.fila .busca{color:var(--muted);font-weight:500}
 .cant{display:flex;align-items:center;gap:4px}
 .cant button{width:34px;height:34px;border-radius:9px;border:1px solid var(--border);background:var(--bg3);color:var(--text);display:flex;align-items:center;justify-content:center}
 .cant b{min-width:30px;text-align:center;font-size:16px;font-variant-numeric:tabular-nums}
@@ -116,6 +122,9 @@ svg{width:20px;height:20px;flex-shrink:0}
   history.replaceState(null,'',location.pathname);
 
   /* ── Lista (se guarda en el teléfono por si la página se recarga) ── */
+  /* El número del escaneo lo pone la app (h.get('s')): con él la app recoge la lista en el servidor al volver */
+  var sApp=h.get('s')||'';
+  if(/^[a-z0-9]{8,32}$/.test(sApp)){try{sessionStorage.setItem('sl_esc_id',sApp);}catch(e){}}
   var id=(function(){try{var x=sessionStorage.getItem('sl_esc_id');if(x)return x;}catch(e){}
     var a=new Uint8Array(10);crypto.getRandomValues(a);var s=Array.from(a,function(b){return ('0'+b.toString(16)).slice(-2);}).join('');
     try{sessionStorage.setItem('sl_esc_id',s);}catch(e){}return s;})();
@@ -132,22 +141,74 @@ svg{width:20px;height:20px;flex-shrink:0}
   function avisar(t,bien){var a=$('aviso'),m=$('marco');a.textContent=t;a.classList.add('on');m.classList.remove('ok','no');m.classList.add(bien?'ok':'no');
     clearTimeout(timer);timer=setTimeout(function(){a.classList.remove('on');m.classList.remove('ok','no');},1400);}
 
+  /* ── Lectura confiable: un código cuenta solo si (1) su dígito de control es correcto (EAN/UPC) y (2) se lee IGUAL dos
+        veces seguidas. Así no entran lecturas a medias de la cámara (p. ej. 7622201676575 en vez de 7622201717575). ── */
+  function digitoOk(c,formato){
+    formato=String(formato||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+    var esEan=/^(ean13|ean8|upca|upce)$/.test(formato)||(!formato&&/^\d{8}$|^\d{12,13}$/.test(c));
+    if(!esEan)return true;
+    if(!/^\d+$/.test(c))return false;
+    if(formato==='upce')return c.length===8;
+    var d=c.split('').map(Number),chk=d.pop(),s=0;
+    for(var i=d.length-1,k=0;i>=0;i--,k++)s+=d[i]*(k%2===0?3:1);
+    return (10-s%10)%10===chk;
+  }
+  var vistos={};
+  function deteccion(codigo,formato){
+    codigo=String(codigo||'').trim();if(!codigo||!digitoOk(codigo,formato))return;
+    var ahora=Date.now(),v=vistos[codigo];
+    if(!v||ahora-v.ult>REPETIR_MS)v=vistos[codigo]={n:0,contado:false};   /* volvió a entrar al recuadro: lectura nueva */
+    v.n++;v.ult=ahora;
+    if(!v.contado&&v.n>=2){v.contado=true;leido(codigo,true);}
+  }
   function leido(codigo,manual){
     codigo=String(codigo||'').trim();
-    if(!manual){var ahora=Date.now(),u=ultimo[codigo];ultimo[codigo]=ahora;if(u&&ahora-u<REPETIR_MS)return;}
+    if(!manual){deteccion(codigo);return;}
     if(!RE_CODIGO.test(codigo)){pitido(false);avisar('Ese código tiene caracteres no válidos',false);return;}
     var f=null;for(var i=0;i<lista.length;i++)if(lista[i].c===codigo){f=lista[i];break;}
     if(f){f.q=Math.min(9999,f.q+1);lista.splice(lista.indexOf(f),1);lista.unshift(f);}
     else{if(lista.length>=MAX_ITEMS){avisar('Máximo '+MAX_ITEMS+' códigos distintos por escaneo',false);return;}f={c:codigo,q:1};lista.unshift(f);}
-    pitido(true);avisar(codigo+' · '+f.q+(f.q>1?' unidades':' unidad'),true);guardar();pintar(codigo);
+    var nom=INFO[codigo]?(INFO[codigo].d||INFO[codigo].r):codigo;
+    pitido(INFO[codigo]!==null);avisar(nom+' · '+f.q+(f.q>1?' unidades':' unidad'),INFO[codigo]!==null);guardar();pintar(codigo);buscarNombre(codigo);
   }
+  /* ── Nombre del producto: se pregunta a SEMA∆LOG con el número del escaneo (permiso temporal que dio la app) ── */
+  var INFO={},porBuscar=[],tBusca=0,puedeBuscar=!!vuelta&&/^[a-z0-9]{16,32}$/.test(id);
+  function escH(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function fichaHtml(c){
+    var x=INFO[c];
+    if(x)return '<div class="inf"><div class="ds">'+escH(x.d||x.r||c)+'</div><div class="st">'+escH(x.r)+' · Stock '+(+x.s||0)+' · <span class="cod">'+c+'</span></div></div>';
+    if(x===null)return '<div class="inf"><div class="ds">No registrado en el inventario</div><div class="st"><span class="cod">'+c+'</span></div></div>';
+    return '<div class="inf"><div class="cod">'+c+'</div>'+(puedeBuscar?'<div class="st busca">Buscando el producto…</div>':'')+'</div>';
+  }
+  function buscarNombre(c){
+    if(!puedeBuscar||c in INFO||porBuscar.indexOf(c)>=0)return;
+    porBuscar.push(c);clearTimeout(tBusca);tBusca=setTimeout(consultar,250);
+  }
+  function consultar(){
+    var lote=porBuscar.splice(0,20);if(!lote.length)return;
+    fetch(vuelta,{method:'POST',mode:'cors',redirect:'follow',credentials:'omit',headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({consulta:id,codigos:lote})})
+      .then(function(r){return r.json();})
+      .then(function(j){
+        if(!j||!j.ok){if(j&&/vencido/i.test(j.msg||''))puedeBuscar=false;pintar();return;}
+        lote.forEach(function(c){INFO[c]=(j.productos&&c in j.productos)?j.productos[c]:null;});
+        guardarInfo();pintar();
+        var nuevo=lote.filter(function(c){return INFO[c];}).pop();
+        if(nuevo&&INFO[nuevo])avisar(INFO[nuevo].d||INFO[nuevo].r,true);
+      })
+      .catch(function(){puedeBuscar=false;pintar();})      /* sin nombres, el escáner sigue funcionando con los códigos */
+      .then(function(){if(porBuscar.length)setTimeout(consultar,100);});
+  }
+  function guardarInfo(){try{sessionStorage.setItem('sl_esc_info',JSON.stringify(INFO));}catch(e){}}
+  try{INFO=JSON.parse(sessionStorage.getItem('sl_esc_info')||'{}')||{};}catch(e){INFO={};}
+
   function pintar(nuevo){
     var und=lista.reduce(function(s,x){return s+x.q;},0);
     $('total').textContent=lista.length?'· '+lista.length+' código'+(lista.length===1?'':'s')+' · '+und+' unidad'+(und===1?'':'es'):'';
     $('b-listo').disabled=!lista.length;$('b-listo').textContent=lista.length?'Listo · volver ('+und+')':'Listo';
     if(!lista.length){$('lista').innerHTML='<div class="vacio">Todavía no has escaneado nada.<br>Los códigos aparecerán aquí.</div>';return;}
     $('lista').innerHTML=lista.map(function(x,i){
-      return '<div class="fila'+(x.c===nuevo?' nueva':'')+'"><div class="cod">'+x.c+'</div><div class="cant">'+
+      return '<div class="fila'+(x.c===nuevo?' nueva':'')+(INFO[x.c]===null?' noreg':'')+'">'+fichaHtml(x.c)+'<div class="cant">'+
         '<button type="button" data-a="-" data-i="'+i+'" aria-label="Restar uno">'+svg('minus')+'</button><b>'+x.q+'</b>'+
         '<button type="button" data-a="+" data-i="'+i+'" aria-label="Sumar uno">'+svg('plus')+'</button></div></div>';
     }).join('');
@@ -159,13 +220,32 @@ svg{width:20px;height:20px;flex-shrink:0}
   $('b-vaciar').onclick=function(){if(lista.length&&confirm('¿Vaciar la lista de códigos?')){lista=[];ultimo={};guardar();pintar();}};
 
   /* ── Volver a SEMA∆LOG: con la lista (Listo) o sin nada (Cancelar) ── */
+  /* Volver a la página EXACTA de donde se vino (con «atrás»): así Google usa la misma cuenta. Abrir la dirección /exec
+     «a secas» falla cuando el celular tiene varias cuentas de Google («No se pudo abrir el archivo»). */
+  function regresar(){
+    try{['sl_esc_lista','sl_esc_id','sl_esc_vuelta','sl_esc_info'].forEach(function(k){sessionStorage.removeItem(k);});}catch(e){}
+    if(history.length>1){history.back();setTimeout(function(){location.replace(vuelta);},1500);}   /* por si no había a dónde volver */
+    else location.replace(vuelta);
+  }
+  /* La lista se entrega al servidor (anónimo, sin cuentas) bajo el número del escaneo; la app la recoge al volver */
+  function enviar(){
+    var cuerpo=JSON.stringify({escaneo:id,c:lista.map(function(x){return x.c+'*'+x.q;}).join(',')});
+    function intento(modo){return fetch(vuelta,{method:'POST',mode:modo,redirect:'follow',credentials:'omit',headers:{'Content-Type':'text/plain;charset=utf-8'},body:cuerpo});}
+    return intento('cors').then(function(r){return r.json();}).then(function(j){if(!j||!j.ok)throw new Error((j&&j.msg)||'El servidor no aceptó la lista');return true;})
+      .catch(function(e){
+        if(e&&/no aceptó|inválida|Demasiados/.test(e.message||''))throw e;
+        return intento('no-cors').then(function(){return true;});   /* si el navegador no deja leer la respuesta, igual llega */
+      });
+  }
   function volver(conLista){
     if(!vuelta){alert('Abre el escáner desde SEMA∆LOG (Movimientos › Escanear códigos) para poder devolver la lista.');return;}
-    apagar();
-    var url=vuelta;
-    if(conLista&&lista.length)url+='?esc='+id+'&c='+encodeURIComponent(lista.map(function(x){return x.c+'*'+x.q;}).join(','));
-    try{sessionStorage.removeItem('sl_esc_lista');sessionStorage.removeItem('sl_esc_id');}catch(e){}
-    location.replace(url);
+    if(!conLista||!lista.length){apagar();regresar();return;}
+    var b=$('b-listo');b.disabled=true;b.textContent='Enviando…';
+    enviar().then(function(){apagar();regresar();}).catch(function(e){
+      b.disabled=false;pintar();
+      avisar('No se pudo enviar la lista. Revisa tu conexión e intenta de nuevo.',false);
+      try{console.warn(e);}catch(x){}
+    });
   }
   $('b-listo').onclick=function(){volver(true);};
   $('b-cancelar').onclick=function(){if(lista.length&&!confirm('¿Salir sin llevar los '+lista.length+' códigos a SEMA∆LOG?'))return;volver(false);};
@@ -190,13 +270,13 @@ svg{width:20px;height:20px;flex-shrink:0}
     var vw=v.videoWidth,vh=v.videoHeight;if(!vw)return null;
     var cw=Math.round(vw*.8),ch=Math.round(vh*.45),x=Math.round((vw-cw)/2),y=Math.max(0,Math.round(vh*.46-ch/2)),k=Math.min(1,800/cw);
     canvas.width=Math.round(cw*k);canvas.height=Math.round(ch*k);var g=canvas.getContext('2d',{willReadFrequently:true});g.drawImage(v,x,y,cw,ch,0,0,canvas.width,canvas.height);
-    try{return zx.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(canvas)))).getText();}catch(e){return null;}finally{try{zx.reset();}catch(e){}}
+    try{var r=zx.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(canvas))));return {t:r.getText(),f:String(ZXing.BarcodeFormat[r.getBarcodeFormat()]||"")};}catch(e){return null;}finally{try{zx.reset();}catch(e){}}
   }
   function ciclo(){
     if(!activo)return;var v=$('video');
     if(v.readyState<2){setTimeout(ciclo,150);return;}
-    if(det)det.detect(v).then(function(c){c.forEach(function(x){leido(x.rawValue);});}).catch(function(){}).then(function(){setTimeout(ciclo,110);});
-    else if(zx){var t=leerZX(v);if(t)leido(t);setTimeout(ciclo,140);}
+    if(det)det.detect(v).then(function(c){c.forEach(function(x){deteccion(x.rawValue,x.format);});}).catch(function(){}).then(function(){setTimeout(ciclo,110);});
+    else if(zx){var t=leerZX(v);if(t)deteccion(t.t,t.f);setTimeout(ciclo,140);}
   }
   function panel(html){var p=$('panel');p.hidden=false;p.innerHTML=svg('circle-alert').replace('<svg ','<svg style="width:40px;height:40px;color:#f59e0b" ')+'<p>'+html+'</p>'+
     '<button type="button" class="btn pri" style="flex:0 0 auto;padding:0 22px" onclick="location.reload()">Intentar de nuevo</button>';}
@@ -224,6 +304,7 @@ svg{width:20px;height:20px;flex-shrink:0}
 
   if(!vuelta)avisar('Ábrelo desde SEMA∆LOG para poder devolver la lista',false);
   pintar();encender();
+  lista.forEach(function(x){if(!(x.c in INFO))buscarNombre(x.c);});   /* si la página se recargó, se completan los nombres */
 })();
 </script>
 </body>
