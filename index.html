@@ -1,0 +1,230 @@
+<!doctype html>
+<!--
+  SEMA∆LOG · Escáner de códigos en pantalla completa (v1.50)
+  Esta página va FUERA de Apps Script (por ejemplo en GitHub Pages) para que Android deje usar la cámara en vivo.
+  · No tiene claves ni datos del inventario: solo lee códigos y los devuelve a la app de SEMA∆LOG.
+  · Solo regresa a direcciones de Apps Script (script.google.com/macros/s/…/exec).
+-->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#000000">
+<title>Escáner · SEMA∆LOG</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg2:#ffffff;--bg3:#eef1f5;--border:#e1e6ed;--text:#0f172a;--muted:#5a6578;--azul:#2563eb}
+@media (prefers-color-scheme:dark){:root{--bg2:#111827;--bg3:#1b2433;--border:#263043;--text:#e5e9f0;--muted:#94a0b4}}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#000;color:#f8fafc;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;overscroll-behavior:none}
+button{font-family:inherit;cursor:pointer}
+[hidden]{display:none!important}
+.app{position:fixed;inset:0;display:flex;flex-direction:column}
+.camara{position:relative;flex:1 1 auto;min-height:220px;overflow:hidden;background:#000}
+.camara video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.sup{position:absolute;left:0;right:0;top:0;display:flex;align-items:center;gap:10px;padding:calc(12px + env(safe-area-inset-top)) 14px 12px;background:linear-gradient(rgba(0,0,0,.6),transparent);z-index:2}
+.sup h1{flex:1;font-size:16px;font-weight:600;text-align:center;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+.ib{width:44px;height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.28);background:rgba(15,23,42,.45);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;backdrop-filter:blur(6px)}
+.ib[aria-pressed="true"]{background:#fbbf24;color:#111827;border-color:#fbbf24}
+svg{width:20px;height:20px;flex-shrink:0}
+.marco{position:absolute;left:50%;top:46%;width:min(78vw,360px);height:min(46vw,210px);transform:translate(-50%,-50%);border-radius:18px;box-shadow:0 0 0 200vmax rgba(0,0,0,.45);border:3px solid rgba(255,255,255,.9);transition:border-color .15s,transform .15s;z-index:1}
+.marco.ok{border-color:#22c55e;transform:translate(-50%,-50%) scale(1.03)}.marco.no{border-color:#f05252}
+.linea{position:absolute;left:8%;right:8%;top:50%;height:2px;background:#f05252;box-shadow:0 0 12px #f05252;border-radius:2px;animation:linea 1.6s ease-in-out infinite alternate}
+@keyframes linea{from{transform:translateY(-70px)}to{transform:translateY(70px)}}
+@media (prefers-reduced-motion:reduce){.linea{animation:none}}
+.ayuda{position:absolute;left:0;right:0;top:calc(46% + min(23vw,105px) + 18px);text-align:center;font-size:13px;color:#e2e8f0;text-shadow:0 1px 3px rgba(0,0,0,.8);z-index:2;padding:0 20px}
+.aviso{position:absolute;left:50%;top:calc(46% - min(23vw,105px) - 46px);transform:translateX(-50%);background:rgba(17,24,39,.92);border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600;white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis;opacity:0;transition:opacity .2s;z-index:4}
+.aviso.on{opacity:1}
+.panel{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;background:#0b1120;z-index:3}
+.panel p{max-width:380px;line-height:1.5;color:#cbd5e1;font-size:14px}
+.panel b{color:#fff}
+.hoja{flex:0 0 auto;max-height:46vh;display:flex;flex-direction:column;background:var(--bg2);color:var(--text);border-radius:18px 18px 0 0;margin-top:-18px;position:relative;z-index:3;box-shadow:0 -10px 30px rgba(0,0,0,.35)}
+.cab{display:flex;align-items:center;gap:8px;padding:12px 16px 8px}
+.cab h2{flex:1;font-size:15px;font-weight:600}.cab small{color:var(--muted);font-size:12px;font-weight:500}
+.cab .ib{width:38px;height:38px;background:var(--bg3);border-color:var(--border);color:var(--text)}
+.manual{display:flex;gap:8px;padding:0 16px 8px}
+.manual input{flex:1;min-width:0;font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);color:var(--text)}
+.lista{overflow-y:auto;padding:0 12px 6px;flex:1 1 auto}
+.vacio{color:var(--muted);font-size:13px;text-align:center;padding:14px 8px 18px}
+.fila{display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid var(--border)}
+.fila:last-child{border-bottom:none}
+.fila.nueva{animation:nueva .6s ease-out}
+@keyframes nueva{from{background:rgba(34,197,94,.22)}to{background:transparent}}
+.fila .cod{flex:1;min-width:0;font-family:ui-monospace,'SF Mono',Consolas,monospace;font-size:14px;font-weight:600;color:var(--azul);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cant{display:flex;align-items:center;gap:4px}
+.cant button{width:34px;height:34px;border-radius:9px;border:1px solid var(--border);background:var(--bg3);color:var(--text);display:flex;align-items:center;justify-content:center}
+.cant b{min-width:30px;text-align:center;font-size:16px;font-variant-numeric:tabular-nums}
+.pie{display:flex;gap:10px;padding:10px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--border)}
+.btn{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;border-radius:12px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-weight:600;font-size:15px}
+.btn.pri{background:var(--azul);border-color:var(--azul);color:#fff;flex:2}
+.btn:disabled{opacity:.45}
+@media (min-width:768px){.app{flex-direction:row}.hoja{width:400px;max-height:none;margin-top:0;border-radius:0}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="camara">
+    <video id="video" playsinline muted autoplay></video>
+    <div class="sup">
+      <button type="button" class="ib" id="b-cancelar" aria-label="Cancelar y volver a SEMA∆LOG" data-i="arrow-left"></button>
+      <h1>Escanea los códigos de barras</h1>
+      <button type="button" class="ib" id="b-linterna" aria-label="Linterna" aria-pressed="false" data-i="flashlight" hidden></button>
+    </div>
+    <div class="marco" id="marco"><span class="linea"></span></div>
+    <div class="aviso" id="aviso" role="status" aria-live="polite"></div>
+    <div class="ayuda">Ubica el código dentro del recuadro. Si lo vuelves a pasar, se suma uno más.</div>
+    <div class="panel" id="panel" hidden></div>
+  </div>
+  <div class="hoja">
+    <div class="cab">
+      <h2>Códigos escaneados <small id="total"></small></h2>
+      <button type="button" class="ib" id="b-teclado" aria-label="Escribir un código" data-i="keyboard"></button>
+    </div>
+    <form class="manual" id="manual" hidden>
+      <input type="text" id="manual-txt" autocomplete="off" placeholder="Código de barras o referencia" aria-label="Código de barras o referencia">
+      <button type="submit" class="btn pri" style="flex:0 0 auto;padding:0 16px">Agregar</button>
+    </form>
+    <div class="lista" id="lista"></div>
+    <div class="pie">
+      <button type="button" class="btn" id="b-vaciar" aria-label="Vaciar la lista" data-i="trash-2"></button>
+      <button type="button" class="btn pri" id="b-listo" disabled>Listo</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  'use strict';
+  var IC={"arrow-left":"<path d=\"m12 19-7-7 7-7\"/><path d=\"M19 12H5\"/>","camera":"<path d=\"M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z\"/><circle cx=\"12\" cy=\"13\" r=\"3\"/>","circle-alert":"<circle cx=\"12\" cy=\"12\" r=\"10\"/><line x1=\"12\" x2=\"12\" y1=\"8\" y2=\"12\"/><line x1=\"12\" x2=\"12.01\" y1=\"16\" y2=\"16\"/>","download":"<path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline points=\"7 10 12 15 17 10\"/><line x1=\"12\" x2=\"12\" y1=\"15\" y2=\"3\"/>","flashlight-off":"<path d=\"M16 16v4a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V10c0-2-2-2-2-4\"/><path d=\"M7 2h11v4c0 2-2 2-2 4v1\"/><line x1=\"11\" x2=\"18\" y1=\"6\" y2=\"6\"/><line x1=\"2\" x2=\"22\" y1=\"2\" y2=\"22\"/>","flashlight":"<path d=\"M18 6c0 2-2 2-2 4v10a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V10c0-2-2-2-2-4V2h12z\"/><line x1=\"6\" x2=\"18\" y1=\"6\" y2=\"6\"/><line x1=\"12\" x2=\"12\" y1=\"12\" y2=\"12\"/>","keyboard":"<path d=\"M10 8h.01\"/><path d=\"M12 12h.01\"/><path d=\"M14 8h.01\"/><path d=\"M16 12h.01\"/><path d=\"M18 8h.01\"/><path d=\"M6 8h.01\"/><path d=\"M7 16h10\"/><path d=\"M8 12h.01\"/><rect width=\"20\" height=\"16\" x=\"2\" y=\"4\" rx=\"2\"/>","minus":"<path d=\"M5 12h14\"/>","plus":"<path d=\"M5 12h14\"/><path d=\"M12 5v14\"/>","scan-barcode":"<path d=\"M3 7V5a2 2 0 0 1 2-2h2\"/><path d=\"M17 3h2a2 2 0 0 1 2 2v2\"/><path d=\"M21 17v2a2 2 0 0 1-2 2h-2\"/><path d=\"M7 21H5a2 2 0 0 1-2-2v-2\"/><path d=\"M8 7v10\"/><path d=\"M12 7v10\"/><path d=\"M17 7v10\"/>","trash-2":"<path d=\"M3 6h18\"/><path d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line x1=\"10\" x2=\"10\" y1=\"11\" y2=\"17\"/><line x1=\"14\" x2=\"14\" y1=\"11\" y2=\"17\"/>","upload":"<path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline points=\"17 8 12 3 7 8\"/><line x1=\"12\" x2=\"12\" y1=\"3\" y2=\"15\"/>","x":"<path d=\"M18 6 6 18\"/><path d=\"m6 6 12 12\"/>"};
+  var ZXING_URL='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+  var ZXING_SRI='sha384-BzBxP10ZE72aitqj5UMmUsbKFliP/DZqA8Wq+BNNhlIJDGoEd1tpkMYXOg9+n6sB';
+  var REPETIR_MS=900, MAX_ITEMS=300;
+  var RE_CODIGO=/^[A-Za-z0-9._\-\/]{1,64}$/;
+  var RE_VUELTA=/^https:\/\/script\.google\.com\/(a\/macros\/[A-Za-z0-9.\-]+|macros)\/s\/[A-Za-z0-9_\-]+\/(exec|dev)$/;
+  var $=function(id){return document.getElementById(id);};
+  function svg(n){return IC[n]?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+IC[n]+'</svg>':'';}
+  document.querySelectorAll('[data-i]').forEach(function(b){b.innerHTML=svg(b.dataset.i);});
+
+  /* ── Adónde se vuelve: SOLO a una app de Apps Script (nada de redirecciones a otros sitios) ── */
+  var h=new URLSearchParams(location.hash.slice(1));
+  var vuelta=h.get('v')||'';
+  try{if(!vuelta)vuelta=sessionStorage.getItem('sl_esc_vuelta')||'';}catch(e){}
+  if(!RE_VUELTA.test(vuelta))vuelta='';
+  try{if(vuelta)sessionStorage.setItem('sl_esc_vuelta',vuelta);}catch(e){}
+  history.replaceState(null,'',location.pathname);
+
+  /* ── Lista (se guarda en el teléfono por si la página se recarga) ── */
+  var id=(function(){try{var x=sessionStorage.getItem('sl_esc_id');if(x)return x;}catch(e){}
+    var a=new Uint8Array(10);crypto.getRandomValues(a);var s=Array.from(a,function(b){return ('0'+b.toString(16)).slice(-2);}).join('');
+    try{sessionStorage.setItem('sl_esc_id',s);}catch(e){}return s;})();
+  var lista=[];try{lista=JSON.parse(sessionStorage.getItem('sl_esc_lista')||'[]').filter(function(x){return RE_CODIGO.test(x.c)&&x.q>0;});}catch(e){lista=[];}
+  function guardar(){try{sessionStorage.setItem('sl_esc_lista',JSON.stringify(lista));}catch(e){}}
+  var ultimo={},timer=0,ctx=null,stream=null,track=null,det=null,zx=null,canvas=null,activo=false,linterna=false;
+
+  function pitido(bien){
+    try{if(!ctx)ctx=new (window.AudioContext||window.webkitAudioContext)();var o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=bien?1180:320;
+      g.gain.setValueAtTime(.0001,ctx.currentTime);g.gain.exponentialRampToValueAtTime(.25,ctx.currentTime+.01);g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+(bien?.12:.25));
+      o.connect(g);g.connect(ctx.destination);o.start();o.stop(ctx.currentTime+.3);}catch(e){}
+    try{if(navigator.vibrate)navigator.vibrate(bien?50:[60,60,60]);}catch(e){}
+  }
+  function avisar(t,bien){var a=$('aviso'),m=$('marco');a.textContent=t;a.classList.add('on');m.classList.remove('ok','no');m.classList.add(bien?'ok':'no');
+    clearTimeout(timer);timer=setTimeout(function(){a.classList.remove('on');m.classList.remove('ok','no');},1400);}
+
+  function leido(codigo,manual){
+    codigo=String(codigo||'').trim();
+    if(!manual){var ahora=Date.now(),u=ultimo[codigo];ultimo[codigo]=ahora;if(u&&ahora-u<REPETIR_MS)return;}
+    if(!RE_CODIGO.test(codigo)){pitido(false);avisar('Ese código tiene caracteres no válidos',false);return;}
+    var f=null;for(var i=0;i<lista.length;i++)if(lista[i].c===codigo){f=lista[i];break;}
+    if(f){f.q=Math.min(9999,f.q+1);lista.splice(lista.indexOf(f),1);lista.unshift(f);}
+    else{if(lista.length>=MAX_ITEMS){avisar('Máximo '+MAX_ITEMS+' códigos distintos por escaneo',false);return;}f={c:codigo,q:1};lista.unshift(f);}
+    pitido(true);avisar(codigo+' · '+f.q+(f.q>1?' unidades':' unidad'),true);guardar();pintar(codigo);
+  }
+  function pintar(nuevo){
+    var und=lista.reduce(function(s,x){return s+x.q;},0);
+    $('total').textContent=lista.length?'· '+lista.length+' código'+(lista.length===1?'':'s')+' · '+und+' unidad'+(und===1?'':'es'):'';
+    $('b-listo').disabled=!lista.length;$('b-listo').textContent=lista.length?'Listo · volver ('+und+')':'Listo';
+    if(!lista.length){$('lista').innerHTML='<div class="vacio">Todavía no has escaneado nada.<br>Los códigos aparecerán aquí.</div>';return;}
+    $('lista').innerHTML=lista.map(function(x,i){
+      return '<div class="fila'+(x.c===nuevo?' nueva':'')+'"><div class="cod">'+x.c+'</div><div class="cant">'+
+        '<button type="button" data-a="-" data-i="'+i+'" aria-label="Restar uno">'+svg('minus')+'</button><b>'+x.q+'</b>'+
+        '<button type="button" data-a="+" data-i="'+i+'" aria-label="Sumar uno">'+svg('plus')+'</button></div></div>';
+    }).join('');
+  }
+  $('lista').addEventListener('click',function(e){var b=e.target.closest('button[data-a]');if(!b)return;var x=lista[+b.dataset.i];if(!x)return;
+    x.q+=b.dataset.a==='+'?1:-1;if(x.q<=0)lista.splice(+b.dataset.i,1);guardar();pintar();});
+  $('b-teclado').onclick=function(){var f=$('manual');f.hidden=!f.hidden;if(!f.hidden)$('manual-txt').focus();};
+  $('manual').onsubmit=function(e){e.preventDefault();var t=$('manual-txt');leido(t.value,true);t.value='';t.focus();};
+  $('b-vaciar').onclick=function(){if(lista.length&&confirm('¿Vaciar la lista de códigos?')){lista=[];ultimo={};guardar();pintar();}};
+
+  /* ── Volver a SEMA∆LOG: con la lista (Listo) o sin nada (Cancelar) ── */
+  function volver(conLista){
+    if(!vuelta){alert('Abre el escáner desde SEMA∆LOG (Movimientos › Escanear códigos) para poder devolver la lista.');return;}
+    apagar();
+    var url=vuelta;
+    if(conLista&&lista.length)url+='?esc='+id+'&c='+encodeURIComponent(lista.map(function(x){return x.c+'*'+x.q;}).join(','));
+    try{sessionStorage.removeItem('sl_esc_lista');sessionStorage.removeItem('sl_esc_id');}catch(e){}
+    location.replace(url);
+  }
+  $('b-listo').onclick=function(){volver(true);};
+  $('b-cancelar').onclick=function(){if(lista.length&&!confirm('¿Salir sin llevar los '+lista.length+' códigos a SEMA∆LOG?'))return;volver(false);};
+
+  /* ── Lectores: nativo (Chrome Android) o ZXing (iPhone y otros) ── */
+  var FORMATOS=['ean_13','ean_8','upc_a','upc_e','code_128','code_39','code_93','codabar','itf','qr_code','data_matrix'];
+  function nativo(){
+    if(!('BarcodeDetector' in window))return Promise.resolve(false);
+    return (BarcodeDetector.getSupportedFormats?BarcodeDetector.getSupportedFormats():Promise.resolve(FORMATOS)).then(function(s){
+      var f=FORMATOS.filter(function(x){return s.indexOf(x)>=0;});if(!f.length)return false;det=new BarcodeDetector({formats:f});return true;}).catch(function(){return false;});
+  }
+  function zxing(){
+    return new Promise(function(ok){
+      function crear(){try{var B=ZXing.BarcodeFormat,hh=new Map();hh.set(ZXing.DecodeHintType.TRY_HARDER,true);
+        hh.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[B.EAN_13,B.EAN_8,B.UPC_A,B.UPC_E,B.CODE_128,B.CODE_39,B.CODE_93,B.CODABAR,B.ITF,B.QR_CODE,B.DATA_MATRIX]);
+        zx=new ZXing.MultiFormatReader();zx.setHints(hh);canvas=document.createElement('canvas');ok(true);}catch(e){ok(false);}}
+      if(window.ZXing){crear();return;}
+      var s=document.createElement('script');s.src=ZXING_URL;s.integrity=ZXING_SRI;s.crossOrigin='anonymous';s.onload=crear;s.onerror=function(){ok(false);};document.head.appendChild(s);
+    });
+  }
+  function leerZX(v){
+    var vw=v.videoWidth,vh=v.videoHeight;if(!vw)return null;
+    var cw=Math.round(vw*.8),ch=Math.round(vh*.45),x=Math.round((vw-cw)/2),y=Math.max(0,Math.round(vh*.46-ch/2)),k=Math.min(1,800/cw);
+    canvas.width=Math.round(cw*k);canvas.height=Math.round(ch*k);var g=canvas.getContext('2d',{willReadFrequently:true});g.drawImage(v,x,y,cw,ch,0,0,canvas.width,canvas.height);
+    try{return zx.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(canvas)))).getText();}catch(e){return null;}finally{try{zx.reset();}catch(e){}}
+  }
+  function ciclo(){
+    if(!activo)return;var v=$('video');
+    if(v.readyState<2){setTimeout(ciclo,150);return;}
+    if(det)det.detect(v).then(function(c){c.forEach(function(x){leido(x.rawValue);});}).catch(function(){}).then(function(){setTimeout(ciclo,110);});
+    else if(zx){var t=leerZX(v);if(t)leido(t);setTimeout(ciclo,140);}
+  }
+  function panel(html){var p=$('panel');p.hidden=false;p.innerHTML=svg('circle-alert').replace('<svg ','<svg style="width:40px;height:40px;color:#f59e0b" ')+'<p>'+html+'</p>'+
+    '<button type="button" class="btn pri" style="flex:0 0 auto;padding:0 22px" onclick="location.reload()">Intentar de nuevo</button>';}
+  function encender(){
+    $('panel').hidden=true;
+    if(!window.isSecureContext||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){panel('Este navegador no permite la cámara en vivo. Abre esta página en <b>Chrome</b>.');return;}
+    activo=true;
+    navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}}).then(function(st){
+      if(!activo){st.getTracks().forEach(function(t){t.stop();});return;}
+      stream=st;track=st.getVideoTracks()[0];var v=$('video');v.srcObject=st;var p=v.play();if(p&&p.catch)p.catch(function(){});
+      try{var cap=track.getCapabilities?track.getCapabilities():{};$('b-linterna').hidden=!cap.torch;
+        if(cap.focusMode&&cap.focusMode.indexOf('continuous')>=0)track.applyConstraints({advanced:[{focusMode:'continuous'}]}).catch(function(){});}catch(e){}
+      return nativo().then(function(n){return n||zxing();}).then(function(ok){if(!ok)panel('No pude cargar el lector de códigos. Revisa tu conexión a internet.');else ciclo();});
+    }).catch(function(err){
+      var n=err&&err.name;
+      if(n==='NotAllowedError')panel('<b>Falta el permiso de la cámara.</b><br>Toca el ícono a la izquierda de la dirección › <b>Permisos</b> › <b>Cámara</b> › Permitir. Si no aparece: Ajustes del teléfono › Aplicaciones › Chrome › Permisos › Cámara.');
+      else if(n==='NotReadableError')panel('La cámara la está usando otra aplicación. Ciérrala e intenta de nuevo.');
+      else if(n==='NotFoundError')panel('No encontré una cámara en este equipo.');
+      else panel('No pude abrir la cámara ('+(n||'error')+').');
+    });
+  }
+  function apagar(){activo=false;if(stream)stream.getTracks().forEach(function(t){try{t.stop();}catch(e){}});stream=null;track=null;}
+  $('b-linterna').onclick=function(){if(!track)return;linterna=!linterna;track.applyConstraints({advanced:[{torch:linterna}]}).then(function(){$('b-linterna').setAttribute('aria-pressed',String(linterna));}).catch(function(){linterna=false;});};
+  document.addEventListener('visibilitychange',function(){if(document.hidden)apagar();else if(!stream)encender();});
+
+  if(!vuelta)avisar('Ábrelo desde SEMA∆LOG para poder devolver la lista',false);
+  pintar();encender();
+})();
+</script>
+</body>
+</html>
