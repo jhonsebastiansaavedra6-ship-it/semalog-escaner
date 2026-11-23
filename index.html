@@ -25,7 +25,8 @@ button{font-family:inherit;cursor:pointer}
 .app{position:fixed;inset:0;display:flex;flex-direction:column}
 .camara{position:relative;flex:1 1 auto;min-height:220px;overflow:hidden;background:#000}
 .camara video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.sup{position:absolute;left:0;right:0;top:0;display:flex;align-items:center;gap:10px;padding:calc(12px + env(safe-area-inset-top)) 14px 12px;background:linear-gradient(rgba(0,0,0,.6),transparent);z-index:2}
+.sup{position:absolute;left:0;right:0;top:0;display:flex;align-items:center;gap:10px;padding:calc(12px + env(safe-area-inset-top)) 14px 12px;background:linear-gradient(rgba(0,0,0,.6),transparent);z-index:5}
+.ib.cancelar{width:auto;padding:0 14px 0 10px;gap:6px;font-weight:600;font-size:14px}
 .sup h1{flex:1;font-size:16px;font-weight:600;text-align:center;text-shadow:0 1px 3px rgba(0,0,0,.6)}
 .ib{width:44px;height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.28);background:rgba(15,23,42,.45);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;backdrop-filter:blur(6px)}
 .ib[aria-pressed="true"]{background:#fbbf24;color:#111827;border-color:#fbbf24}
@@ -75,7 +76,7 @@ svg{width:20px;height:20px;flex-shrink:0}
   <div class="camara">
     <video id="video" playsinline muted autoplay></video>
     <div class="sup">
-      <button type="button" class="ib" id="b-cancelar" aria-label="Cancelar y volver a SEMA∆LOG" data-i="arrow-left"></button>
+      <button type="button" class="ib cancelar" id="b-cancelar" data-i="x" data-t="Cancelar"></button>
       <h1>Escanea los códigos de barras</h1>
       <button type="button" class="ib" id="b-linterna" aria-label="Linterna" aria-pressed="false" data-i="flashlight" hidden></button>
     </div>
@@ -111,7 +112,7 @@ svg{width:20px;height:20px;flex-shrink:0}
   var RE_VUELTA=/^https:\/\/script\.google\.com\/(a\/macros\/[A-Za-z0-9.\-]+|macros)\/s\/[A-Za-z0-9_\-]+\/(exec|dev)$/;
   var $=function(id){return document.getElementById(id);};
   function svg(n){return IC[n]?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+IC[n]+'</svg>':'';}
-  document.querySelectorAll('[data-i]').forEach(function(b){b.innerHTML=svg(b.dataset.i);});
+  document.querySelectorAll('[data-i]').forEach(function(b){b.innerHTML=svg(b.dataset.i)+(b.dataset.t?'<span>'+b.dataset.t+'</span>':'');});
 
   /* ── Adónde se vuelve: SOLO a una app de Apps Script (nada de redirecciones a otros sitios) ── */
   var h=new URLSearchParams(location.hash.slice(1));
