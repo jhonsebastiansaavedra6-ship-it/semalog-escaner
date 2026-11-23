@@ -169,6 +169,7 @@ svg{width:20px;height:20px;flex-shrink:0}
     codigo=String(codigo||'').trim();
     if(!manual){deteccion(codigo);return;}
     if(!RE_CODIGO.test(codigo)){pitido(false);avisar('Ese código tiene caracteres no válidos',false);return;}
+    if(!unCodigo&&INFO[codigo]===null){pitido(false);avisar('No registrado: '+codigo+' · no se agrega',false);return;}   /* ya se sabe que no existe */
     var f=null;for(var i=0;i<lista.length;i++)if(lista[i].c===codigo){f=lista[i];break;}
     if(f){f.q=Math.min(9999,f.q+1);lista.splice(lista.indexOf(f),1);lista.unshift(f);}
     else{if(lista.length>=MAX_ITEMS){avisar('Máximo '+MAX_ITEMS+' códigos distintos por escaneo',false);return;}f={c:codigo,q:1};lista.unshift(f);}
@@ -197,7 +198,12 @@ svg{width:20px;height:20px;flex-shrink:0}
       .then(function(j){
         if(!j||!j.ok){if(j&&/vencido/i.test(j.msg||''))puedeBuscar=false;pintar();return;}
         lote.forEach(function(c){INFO[c]=(j.productos&&c in j.productos)?j.productos[c]:null;});
-        guardarInfo();pintar();
+        guardarInfo();
+        /* v1.50: movimientos solo con productos registrados → los que no existen salen de la lista */
+        var noReg=unCodigo?[]:lote.filter(function(c){return INFO[c]===null;});
+        if(noReg.length){lista=lista.filter(function(x){return INFO[x.c]!==null;});guardar();}
+        pintar();
+        if(noReg.length){pitido(false);avisar('No registrado: '+noReg[0]+(noReg.length>1?' (y '+(noReg.length-1)+' más)':'')+' · no se agrega',false);return;}
         var nuevo=lote.filter(function(c){return INFO[c];}).pop();
         if(nuevo&&INFO[nuevo])avisar(INFO[nuevo].d||INFO[nuevo].r,true);
       })
